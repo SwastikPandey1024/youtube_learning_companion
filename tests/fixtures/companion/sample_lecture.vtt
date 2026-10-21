@@ -1,0 +1,10 @@
+WEBVTT
+
+00:00:00.000 --> 00:00:15.500
+Welcome to Linear Algebra for GATE Data Science.
+
+00:00:15.500 --> 00:00:45.000
+Vectors and matrices form the foundational pillar of machine learning.
+
+00:00:45.000 --> 00:01:30.000
+A matrix represents a linear transformation mapping vectors across Euclidean spaces.

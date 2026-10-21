@@ -1,0 +1,69 @@
+{
+  "video_id": "DrCeIbpfuzE",
+  "title": "1a. Why Study Linear Algebra | The Importance of Linear Algebra in Machine Learning | Sachin Mittal",
+  "language": "en",
+  "is_auto_generated": false,
+  "duration_seconds": 1331.0,
+  "segments": [
+    {
+      "start_seconds": 0.0,
+      "end_seconds": 45.0,
+      "text": "Welcome to Linear Algebra for GATE Data Science and AI. In this introductory lecture, we will discuss why linear algebra is the absolute foundational pillar for machine learning, deep learning, and competitive exams like GATE."
+    },
+    {
+      "start_seconds": 45.0,
+      "end_seconds": 120.0,
+      "text": "In computer science and machine learning, data is represented using vectors and matrices. A single feature vector is defined as an ordered collection of real numbers in n-dimensional Euclidean space R^n."
+    },
+    {
+      "start_seconds": 120.0,
+      "end_seconds": 210.0,
+      "text": "For example, an image is represented as a matrix of pixel values, or a 3D tensor if it has RGB color channels. Text documents are converted into dense feature vectors using word embeddings."
+    },
+    {
+      "start_seconds": 210.0,
+      "end_seconds": 310.0,
+      "text": "What is a matrix? A matrix is not just a rectangular array of numbers; geometrically, a matrix represents a linear transformation that maps vectors from one vector space to another."
+    },
+    {
+      "start_seconds": 310.0,
+      "end_seconds": 420.0,
+      "text": "When we write y = A x, the matrix A transforms the vector x into y. Linear transformations preserve two fundamental operations: vector addition and scalar multiplication."
+    },
+    {
+      "start_seconds": 420.0,
+      "end_seconds": 540.0,
+      "text": "Consider systems of linear equations written in matrix form as A x = b. Solving linear regression in machine learning is equivalent to finding the best approximate solution x that minimizes the error norm ||A x - b||."
+    },
+    {
+      "start_seconds": 540.0,
+      "end_seconds": 660.0,
+      "text": "Let us take a worked example. Consider the dot product of two vectors u and v. The dot product u dot v is the sum of product of corresponding components, measuring alignment and cosine similarity in NLP."
+    },
+    {
+      "start_seconds": 660.0,
+      "end_seconds": 780.0,
+      "text": "In dimensionality reduction, techniques like Principal Component Analysis (PCA) and Singular Value Decomposition (SVD) find the directions of maximum variance using eigenvalues and eigenvectors A x = lambda x."
+    },
+    {
+      "start_seconds": 780.0,
+      "end_seconds": 920.0,
+      "text": "Common GATE exam trap: students often confuse linear independence with orthogonality. Orthogonal vectors are always linearly independent if non-zero, but linearly independent vectors need not be orthogonal."
+    },
+    {
+      "start_seconds": 920.0,
+      "end_seconds": 1080.0,
+      "text": "Another common mistake is assuming that every square matrix is diagonalizable. A matrix is diagonalizable if and only if it possesses n linearly independent eigenvectors."
+    },
+    {
+      "start_seconds": 1080.0,
+      "end_seconds": 1220.0,
+      "text": "To revise: vectors represent data points, matrices represent transformations, rank measures independent information, and eigenvalues reveal invariant geometric stretch factors."
+    },
+    {
+      "start_seconds": 1220.0,
+      "end_seconds": 1331.0,
+      "text": "In the next lecture, we will study linear independence and dependence in complete mathematical detail with practice GATE questions."
+    }
+  ]
+}
