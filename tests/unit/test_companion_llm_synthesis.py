@@ -792,6 +792,59 @@ class TestPostOptimizationHardening:
         kw["generation_params"] = {"temperature": 0.7}
         assert compute_section_cache_key(**kw) != base_key  # type: ignore[arg-type]
 
+        # Timestamp provenance changes the prompt and must invalidate cached synthesis.
+        inferred_segment = seg1.model_copy(update={"start_timestamp_is_source": False})
+        kw = dict(base_kwargs)
+        kw["window_segments"] = [inferred_segment]
+        assert compute_section_cache_key(**kw) != base_key  # type: ignore[arg-type]
+        inferred_end_segment = seg1.model_copy(update={"end_timestamp_is_source": False})
+        kw["window_segments"] = [inferred_end_segment]
+        assert compute_section_cache_key(**kw) != base_key  # type: ignore[arg-type]
+
+    def test_synthesis_rejects_transcript_for_different_video(
+        self, pilot_metadata: YouTubeVideoMetadata, pilot_transcript_doc: TranscriptDocument
+    ) -> None:
+        mismatched_transcript = pilot_transcript_doc.model_copy(update={"video_id": "other_video"})
+
+        with pytest.raises(ValueError, match="does not match video metadata"):
+            StudyNoteSynthesizer().synthesize(pilot_metadata, mismatched_transcript)
+
+    def test_inferred_timing_provenance_survives_llm_synthesis(
+        self, pilot_metadata: YouTubeVideoMetadata, pilot_transcript_doc: TranscriptDocument
+    ) -> None:
+        inferred_segment = pilot_transcript_doc.segments[0].model_copy(
+            update={"start_timestamp_is_source": False}
+        )
+        transcript = pilot_transcript_doc.model_copy(update={"segments": (inferred_segment,)})
+
+        note = StudyNoteSynthesizer(
+            llm_client=MockLLMClient(),
+            fallback_to_deterministic=False,
+            chunk_window_seconds=300.0,
+        ).synthesize(pilot_metadata, transcript)
+
+        section = note.sections[0]
+        assert section.start_timestamp_is_source is False
+        assert section.end_timestamp_is_source is True
+        evidence = section.definitions[0].evidence_refs[0]
+        assert evidence.start_timestamp_is_source is False
+        assert evidence.end_timestamp_is_source is True
+
+    def test_inferred_timing_provenance_survives_deterministic_synthesis(
+        self, pilot_metadata: YouTubeVideoMetadata, pilot_transcript_doc: TranscriptDocument
+    ) -> None:
+        source_segment = pilot_transcript_doc.segments[0].model_copy(
+            update={"start_timestamp_is_source": False}
+        )
+        transcript = pilot_transcript_doc.model_copy(update={"segments": (source_segment,)})
+
+        note = StudyNoteSynthesizer().synthesize(pilot_metadata, transcript)
+
+        section = note.sections[0]
+        assert section.start_timestamp_is_source is False
+        evidence = section.definitions[0].evidence_refs[0]
+        assert evidence.start_timestamp_is_source is False
+
     def test_cache_hit_deserialization_safety_and_malformed_purging(
         self, pilot_metadata: YouTubeVideoMetadata, pilot_transcript_doc: TranscriptDocument
     ) -> None:
@@ -1050,4 +1103,3 @@ class TestPostOptimizationHardening:
         assert calls_added == 1
         calls_avoided = expected_sections
         assert calls_avoided > 0
-

@@ -38,10 +38,19 @@ def sanitize_filename(name: str) -> str:
     return s[:120]
 
 
-def format_evidence_reference(reference: EvidenceReference) -> str:
+def format_evidence_reference(
+    reference: EvidenceReference, expected_video_id: str | None = None
+) -> str:
     """Render a clickable evidence timestamp and its source segment identifier."""
     detail = f"; segment `{reference.segment_id}`" if reference.segment_id else ""
-    return f"([{reference.timestamp_label}]({reference.clickable_url}){detail})"
+    if expected_video_id is not None and reference.video_id != expected_video_id:
+        return f"(unverified reference for video `{reference.video_id}`{detail})"
+    url = reference.clickable_url
+    if url is None:
+        return f"({reference.timestamp_label}{detail})"
+    if not reference.end_timestamp_is_source:
+        detail = f"{detail}; inferred end time" if detail else "; inferred end time"
+    return f"([{reference.timestamp_label}]({url}){detail})"
 
 
 def _yaml_string(value: str) -> str:
@@ -146,17 +155,24 @@ class MarkdownExporter:
             lines.append("## 📖 Lecture Notes & Concepts\n")
             for idx, sec in enumerate(note.sections, start=1):
                 start_label = format_seconds(sec.start_seconds)
-                click_url = (
-                    f"https://youtube.com/watch?v={note.video_id}&t={int(sec.start_seconds)}s"
-                )
-                lines.append(f"### {idx}. {sec.title} [{start_label}]({click_url})\n")
+                if sec.start_timestamp_is_source:
+                    click_url = (
+                        f"https://youtube.com/watch?v={note.video_id}"
+                        f"&t={int(sec.start_seconds)}s"
+                    )
+                    start_markup = f"[{start_label}]({click_url})"
+                else:
+                    start_markup = f"{start_label} (inferred timing)"
+                lines.append(f"### {idx}. {sec.title} {start_markup}\n")
                 lines.append(f"{sec.overview}\n")
 
                 # Definitions
                 for d in sec.definitions:
                     ts_link = ""
                     if d.evidence_refs:
-                        ts_link = f" {format_evidence_reference(d.evidence_refs[0])}"
+                        ts_link = (
+                            f" {format_evidence_reference(d.evidence_refs[0], note.video_id)}"
+                        )
                     lines.append(f"> [!note] Definition: **{d.term}**{ts_link}")
                     lines.append(f"> {d.definition}")
                     if d.notation:
@@ -169,7 +185,9 @@ class MarkdownExporter:
                 for thm in sec.theorems:
                     ts_link = ""
                     if thm.evidence_refs:
-                        ts_link = f" {format_evidence_reference(thm.evidence_refs[0])}"
+                        ts_link = (
+                            f" {format_evidence_reference(thm.evidence_refs[0], note.video_id)}"
+                        )
                     lines.append(f"> [!abstract] Theorem: **{thm.name}**{ts_link}")
                     lines.append(f"> **Statement:** {thm.statement}")
                     if thm.conditions:
@@ -181,7 +199,9 @@ class MarkdownExporter:
                 for f in sec.formulas:
                     ts_link = ""
                     if f.evidence_refs:
-                        ts_link = f" {format_evidence_reference(f.evidence_refs[0])}"
+                        ts_link = (
+                            f" {format_evidence_reference(f.evidence_refs[0], note.video_id)}"
+                        )
                     lines.append(f"#### 📐 Formula: {f.name}{ts_link}\n")
                     lines.append(f"$$\n{f.latex_expression.strip('$')}\n$$\n")
                     if f.variables:
@@ -194,7 +214,9 @@ class MarkdownExporter:
                 for ex in sec.worked_examples:
                     ts_link = ""
                     if ex.evidence_refs:
-                        ts_link = f" {format_evidence_reference(ex.evidence_refs[0])}"
+                        ts_link = (
+                            f" {format_evidence_reference(ex.evidence_refs[0], note.video_id)}"
+                        )
                     lines.append(f"> [!example] Worked Example{ts_link}")
                     lines.append(f"> **Problem:** {ex.problem_statement}")
                     if ex.step_by_step_solution:
@@ -210,7 +232,9 @@ class MarkdownExporter:
                 for trap in sec.exam_traps:
                     ts_link = ""
                     if trap.evidence_refs:
-                        ts_link = f" {format_evidence_reference(trap.evidence_refs[0])}"
+                        ts_link = (
+                            f" {format_evidence_reference(trap.evidence_refs[0], note.video_id)}"
+                        )
                     origin = (
                         "Direct from lecture"
                         if trap.is_directly_stated_in_lecture
@@ -228,7 +252,7 @@ class MarkdownExporter:
             for t in note.key_takeaways:
                 ts_link = ""
                 if t.evidence_refs:
-                    ts_link = f" {format_evidence_reference(t.evidence_refs[0])}"
+                    ts_link = f" {format_evidence_reference(t.evidence_refs[0], note.video_id)}"
                 lines.append(f"- **[{t.importance.upper()}]** {t.takeaway}{ts_link}")
             lines.append("")
 
@@ -238,7 +262,7 @@ class MarkdownExporter:
             for idx, q in enumerate(note.practice_questions, start=1):
                 ts_link = ""
                 if q.evidence_refs:
-                    ts_link = f" {format_evidence_reference(q.evidence_refs[0])}"
+                    ts_link = f" {format_evidence_reference(q.evidence_refs[0], note.video_id)}"
                 lines.append(f"**Q{idx} ({q.question_type.title()}):** {q.question}{ts_link}")
                 lines.append("<details><summary>Click to view Answer / Hint</summary>")
                 lines.append(f"\n> {q.answer_or_hint}\n")

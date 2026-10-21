@@ -4,7 +4,7 @@ Reuses and extends Phase 9 evaluation standards:
 - Factual grounding and unsupported claim rate
 - Key concept coverage compared to reference gold-standard
 - LaTeX equation syntax fidelity
-- Timestamp validity (bounded within duration, non-negative intervals)
+- Timestamp validity (source-backed, bounded within duration, non-negative intervals)
 - Epistemic uncertainty reporting and duplicate concept detection
 """
 
@@ -49,7 +49,9 @@ class CompanionEvaluationResult(BaseModel):
         default=0, ge=0, description="Total evidence timestamp references"
     )
     valid_timestamps: int = Field(
-        default=0, ge=0, description="Timestamps within valid video duration interval"
+        default=0,
+        ge=0,
+        description="Source-backed timestamps within the valid video duration interval",
     )
     timestamp_accuracy_rate: float = Field(
         default=1.0, ge=0.0, le=1.0, description="Valid timestamps / total timestamps"
@@ -95,38 +97,52 @@ def evaluate_study_note(
         nonlocal total_ts, valid_ts
         for ref in refs:
             total_ts += 1
+            if ref.video_id != note.video_id:
+                audit_notes.append(
+                    f"Evidence reference points to different video {ref.video_id!r} "
+                    f"instead of {note.video_id!r} in {item_label}"
+                )
+                continue
             if (
                 ref.start_seconds >= 0.0
                 and ref.end_seconds >= ref.start_seconds
                 and (duration == 0.0 or ref.end_seconds <= duration + 5.0)
             ):
-                valid_ts += 1
+                if ref.start_timestamp_is_source and ref.end_timestamp_is_source:
+                    valid_ts += 1
+                else:
+                    audit_notes.append(
+                        f"Unverified timestamp interval contains inferred timing in {item_label}"
+                    )
             else:
                 audit_notes.append(
                     f"Invalid timestamp interval: [{ref.start_seconds:.1f}, "
                     f"{ref.end_seconds:.1f}] vs dur {duration:.1f} in {item_label}"
                 )
 
+    def _has_matching_video_reference(refs: tuple[EvidenceReference, ...]) -> bool:
+        return any(ref.video_id == note.video_id for ref in refs)
+
     for sec in note.sections:
         # Check definitions
         for d in sec.definitions:
             total_claims += 1
             claim_texts.append(d.term.lower())
-            if d.evidence_refs:
+            if _has_matching_video_reference(d.evidence_refs):
                 grounded_claims += 1
-                _audit_evidence_refs(d.evidence_refs, f"definition '{d.term}'")
             else:
                 unsupported_claims += 1
+            _audit_evidence_refs(d.evidence_refs, f"definition '{d.term}'")
 
         # Check theorems
         for t in sec.theorems:
             total_claims += 1
             claim_texts.append(t.name.lower())
-            if t.evidence_refs:
+            if _has_matching_video_reference(t.evidence_refs):
                 grounded_claims += 1
-                _audit_evidence_refs(t.evidence_refs, f"theorem '{t.name}'")
             else:
                 unsupported_claims += 1
+            _audit_evidence_refs(t.evidence_refs, f"theorem '{t.name}'")
 
         # Check formulas
         for f in sec.formulas:
@@ -137,38 +153,38 @@ def evaluate_study_note(
             else:
                 audit_notes.append(f"Unbalanced LaTeX in formula: {f.latex_expression}")
 
-            if f.evidence_refs:
+            if _has_matching_video_reference(f.evidence_refs):
                 grounded_claims += 1
-                _audit_evidence_refs(f.evidence_refs, f"formula '{f.name}'")
             else:
                 unsupported_claims += 1
+            _audit_evidence_refs(f.evidence_refs, f"formula '{f.name}'")
 
         # Check examples
         for ex in sec.worked_examples:
             total_claims += 1
-            if ex.evidence_refs:
+            if _has_matching_video_reference(ex.evidence_refs):
                 grounded_claims += 1
-                _audit_evidence_refs(ex.evidence_refs, f"example '{ex.problem_statement[:30]}'")
             else:
                 unsupported_claims += 1
+            _audit_evidence_refs(ex.evidence_refs, f"example '{ex.problem_statement[:30]}'")
 
         # Check traps
         for trap in sec.exam_traps:
             total_claims += 1
-            if trap.evidence_refs:
+            if _has_matching_video_reference(trap.evidence_refs):
                 grounded_claims += 1
-                _audit_evidence_refs(trap.evidence_refs, f"trap '{trap.trap_description[:30]}'")
             else:
                 unsupported_claims += 1
+            _audit_evidence_refs(trap.evidence_refs, f"trap '{trap.trap_description[:30]}'")
 
     # Check key takeaways
     for takeaway in note.key_takeaways:
         total_claims += 1
-        if takeaway.evidence_refs:
+        if _has_matching_video_reference(takeaway.evidence_refs):
             grounded_claims += 1
-            _audit_evidence_refs(takeaway.evidence_refs, f"takeaway '{takeaway.takeaway[:30]}'")
         else:
             unsupported_claims += 1
+        _audit_evidence_refs(takeaway.evidence_refs, f"takeaway '{takeaway.takeaway[:30]}'")
 
     unsupported_rate = round(unsupported_claims / total_claims, 3) if total_claims > 0 else 0.0
     latex_fidelity = round(valid_eqs / total_eqs, 3) if total_eqs > 0 else 1.0
@@ -221,7 +237,9 @@ def evaluate_study_note(
 
     # Acceptance threshold
     is_acceptable = (
-        unsupported_rate == 0.0
+        total_claims > 0
+        and total_ts > 0
+        and unsupported_rate == 0.0
         and latex_fidelity >= 0.95
         and ts_accuracy >= 0.95
         and coverage >= 0.50

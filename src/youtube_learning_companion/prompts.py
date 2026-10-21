@@ -27,6 +27,7 @@ Transform bounded transcript segments into clear, accurate, evidence-grounded st
 2. EVIDENCE PROVENANCE & TIMESTAMPS:
    - Every substantive claim, definition, theorem, formula, and exam trap MUST include supporting
      timestamp interval [start_seconds, end_seconds] and a short text quote from the transcript.
+   - A timestamp endpoint marked inferred is not source timing; never present it as verified.
    - Never cite timestamps outside the supplied interval.
 
 3. MATHEMATICAL FIDELITY & LATEX:
@@ -56,7 +57,10 @@ def build_section_synthesis_prompt(
     end_sec = segments[-1].end_seconds
 
     transcript_lines: list[str] = [
-        f"[{s.start_seconds:.1f}s - {s.end_seconds:.1f}s] {s.text}" for s in segments
+        f"[{s.start_seconds:.1f}s ({'source' if s.start_timestamp_is_source else 'inferred'}) - "
+        f"{s.end_seconds:.1f}s ({'source' if s.end_timestamp_is_source else 'inferred'})] "
+        f"{s.text}"
+        for s in segments
     ]
     transcript_block = "\n".join(transcript_lines)
 

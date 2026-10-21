@@ -45,6 +45,21 @@ class TranscriptAuditReport(BaseModel):
 
     # Segment and temporal metrics
     segment_count: int = Field(default=0, ge=0, description="Total timestamped segments")
+    source_start_timestamp_count: int = Field(
+        default=0, ge=0, description="Segment starts backed by source timestamps"
+    )
+    inferred_start_timestamp_count: int = Field(
+        default=0, ge=0, description="Segment starts with inferred timestamps"
+    )
+    source_end_timestamp_count: int = Field(
+        default=0, ge=0, description="Segment ends backed by source timestamps"
+    )
+    inferred_end_timestamp_count: int = Field(
+        default=0, ge=0, description="Segment ends with inferred timestamps"
+    )
+    inferred_timing_segment_count: int = Field(
+        default=0, ge=0, description="Segments with at least one inferred endpoint"
+    )
     start_seconds: float = Field(default=0.0, ge=0.0, description="First segment start timestamp")
     end_seconds: float = Field(default=0.0, ge=0.0, description="Last segment end timestamp")
     transcript_span_seconds: float = Field(
@@ -151,6 +166,12 @@ def audit_transcript(
     all_texts = [s.text.strip() for s in segments]
     total_words = sum(len(t.split()) for t in all_texts if t)
     total_chars = sum(len(t) for t in all_texts if t)
+    source_start_count = sum(segment.start_timestamp_is_source for segment in segments)
+    source_end_count = sum(segment.end_timestamp_is_source for segment in segments)
+    inferred_timing_segment_count = sum(
+        not (segment.start_timestamp_is_source and segment.end_timestamp_is_source)
+        for segment in segments
+    )
 
     # Speaking rate
     duration_minutes = duration_sec / 60.0 if duration_sec > 0 else 1.0
@@ -240,12 +261,18 @@ def audit_transcript(
         findings.append(
             f"Found {out_of_range_count} segments extending beyond the declared video duration."
         )
+    if inferred_timing_segment_count:
+        findings.append(
+            f"{inferred_timing_segment_count} segments contain inferred timestamp endpoints; "
+            "temporal span and coverage diagnostics are not fully source-verified."
+        )
 
     can_support_full = (
         transcript_doc.coverage_status == TranscriptCoverageStatus.COMPLETE
         and coverage_pct >= 85.0
         and gap_count <= 5
         and out_of_range_count == 0
+        and inferred_timing_segment_count == 0
     )
     can_support_synopsis = (total_words >= 150) and (coverage_pct >= 75.0)
 
@@ -279,6 +306,11 @@ def audit_transcript(
         coverage_status=transcript_doc.coverage_status,
         coverage_rationale=transcript_doc.coverage_rationale,
         segment_count=len(segments),
+        source_start_timestamp_count=source_start_count,
+        inferred_start_timestamp_count=len(segments) - source_start_count,
+        source_end_timestamp_count=source_end_count,
+        inferred_end_timestamp_count=len(segments) - source_end_count,
+        inferred_timing_segment_count=inferred_timing_segment_count,
         start_seconds=round(start_sec, 2),
         end_seconds=round(end_sec, 2),
         transcript_span_seconds=round(span_sec, 2),

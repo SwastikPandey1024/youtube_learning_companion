@@ -66,6 +66,40 @@ class TestTranscriptParsers:
         assert doc.segments[0].end_seconds == pytest.approx(15.5)
         assert "foundational pillar" in doc.segments[1].text
 
+    def test_parse_timestamped_txt_preserves_explicit_ranges_and_text(self, tmp_path):
+        transcript = tmp_path / "lecture.txt"
+        transcript.write_text(
+            "[00:00:01.000 --> 00:00:02.500]  Exact source words.  \n"
+            "00:00:02.500 --> 00:00:04.000 Next cue.\n",
+            encoding="utf-8",
+        )
+
+        doc = FileTranscriptProvider(file_map={"txt_vid": transcript}).get_transcript("txt_vid")
+
+        assert doc is not None
+        assert doc.acquisition_method == TranscriptAcquisitionMethod.USER_FILE_TXT
+        assert doc.segments[0].start_seconds == pytest.approx(1.0)
+        assert doc.segments[0].end_seconds == pytest.approx(2.5)
+        assert doc.segments[0].text == " Exact source words.  "
+        assert doc.segments[1].start_seconds == pytest.approx(2.5)
+        assert doc.segments[1].end_seconds == pytest.approx(4.0)
+
+    @pytest.mark.parametrize(
+        "content",
+        [
+            "Plain transcript text without timestamps.",
+            "[00:00:01] Start-only timestamp with no end.",
+            "[00:00:03 --> 00:00:02] Inverted cue interval.",
+        ],
+    )
+    def test_timestamped_txt_rejects_missing_or_invalid_ranges(self, tmp_path, content):
+        transcript = tmp_path / "invalid.txt"
+        transcript.write_text(content, encoding="utf-8")
+
+        doc = FileTranscriptProvider(file_map={"txt_vid": transcript}).get_transcript("txt_vid")
+
+        assert doc is None
+
     def test_audit_vtt_and_srt_transcripts(self):
         """Verify VTT and SRT parsed documents can be directly audited by audit_transcript."""
         from youtube_learning_companion.transcript_audit import audit_transcript
@@ -115,6 +149,33 @@ class TestTranscriptParsers:
         assert doc is not None
         assert doc.segments[0].segment_id == "source-1"
         assert doc.segments[0].text == "  exact text  "
+
+    def test_json_preserves_timestamp_endpoint_provenance(self, tmp_path):
+        transcript = tmp_path / "inferred.json"
+        transcript.write_text(
+            (
+                '{"coverage_status":"complete","coverage_rationale":"Declared complete source",'
+                '"segments":[{"segment_id":"source-1","start":0,"end":10,"text":"A cue",'
+                '"start_timestamp_is_source":false,"end_timestamp_is_source":true}]}'
+            ),
+            encoding="utf-8",
+        )
+
+        doc = FileTranscriptProvider(file_map={"video": transcript}).get_transcript("video")
+
+        assert doc is not None
+        assert doc.segments[0].start_timestamp_is_source is False
+        assert doc.segments[0].end_timestamp_is_source is True
+        roundtrip = type(doc.segments[0]).model_validate(doc.segments[0].model_dump())
+        assert roundtrip.start_timestamp_is_source is False
+        assert roundtrip.end_timestamp_is_source is True
+        from youtube_learning_companion.transcript_audit import audit_transcript
+
+        audit = audit_transcript(doc, video_duration=10.0)
+        assert audit.inferred_start_timestamp_count == 1
+        assert audit.source_end_timestamp_count == 1
+        assert audit.inferred_timing_segment_count == 1
+        assert not audit.can_support_full_lecture_notes
 
     @pytest.mark.parametrize(
         "segments",

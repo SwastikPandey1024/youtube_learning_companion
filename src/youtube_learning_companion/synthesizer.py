@@ -88,8 +88,8 @@ def validate_latex_balance(expr: str) -> bool:
     return len(stack) == 0 and (dollar_count % 2 == 0)
 
 
-SECTION_PROMPT_VERSION: str = "1.0"
-SECTION_SCHEMA_VERSION: str = "1.0"
+SECTION_PROMPT_VERSION: str = "1.1"
+SECTION_SCHEMA_VERSION: str = "1.1"
 
 
 def compute_section_cache_key(
@@ -135,6 +135,8 @@ def compute_section_cache_key(
             [
                 round(s.start_seconds, 3),
                 round(s.end_seconds, 3),
+                s.start_timestamp_is_source,
+                s.end_timestamp_is_source,
                 " ".join(s.text.split()),
             ]
             for s in window_segments
@@ -188,6 +190,11 @@ class StudyNoteSynthesizer:
         # 1. Guard against missing transcript
         if transcript_doc is None or not transcript_doc.segments:
             return self._build_empty_transcript_note(video_meta)
+        if transcript_doc.video_id != video_meta.video_id:
+            raise ValueError(
+                f"Transcript video ID {transcript_doc.video_id!r} does not match video metadata "
+                f"{video_meta.video_id!r}"
+            )
 
         # 2. If an LLM client is configured, execute LLM synthesis
         if self.llm_client is not None:
@@ -505,23 +512,48 @@ class StudyNoteSynthesizer:
         takeaways: list[TakeawayItem] = []
         for tk in cons_data.get("key_takeaways", []):
             if isinstance(tk, dict) and ("point" in tk or "takeaway" in tk):
-                st = float(tk.get("start_seconds", 0.0))
-                et = float(tk.get("end_seconds", video_meta.duration_seconds or 1331.0))
                 pt = str(tk.get("point") or tk.get("takeaway", ""))
+                source_segment: TranscriptSegment | None = None
+                if "start_seconds" in tk and "end_seconds" in tk:
+                    try:
+                        start_seconds = float(tk["start_seconds"])
+                        end_seconds = float(tk["end_seconds"])
+                    except (TypeError, ValueError):
+                        start_seconds = -1.0
+                        end_seconds = -1.0
+                    if start_seconds >= 0.0 and end_seconds >= start_seconds:
+                        candidates = [
+                            segment
+                            for segment in transcript_doc.segments
+                            if segment.start_seconds <= end_seconds
+                            and segment.end_seconds >= start_seconds
+                        ]
+                        if candidates:
+                            source_segment = candidates[0]
+                evidence_refs = (
+                    (
+                        EvidenceReference(
+                            reference_id=str(uuid4()),
+                            video_id=video_meta.video_id,
+                            start_seconds=source_segment.start_seconds,
+                            end_seconds=source_segment.end_seconds,
+                            start_timestamp_is_source=(
+                                source_segment.start_timestamp_is_source
+                            ),
+                            end_timestamp_is_source=source_segment.end_timestamp_is_source,
+                            source_type=EvidenceSourceType.TRANSCRIPT,
+                            segment_id=source_segment.segment_id,
+                            snippet=source_segment.text[:150],
+                        ),
+                    )
+                    if source_segment is not None
+                    else ()
+                )
                 takeaways.append(
                     TakeawayItem(
                         takeaway=pt,
                         importance="high",
-                        evidence_refs=(
-                            EvidenceReference(
-                                reference_id=str(uuid4()),
-                                video_id=video_meta.video_id,
-                                start_seconds=st,
-                                end_seconds=et,
-                                source_type=EvidenceSourceType.TRANSCRIPT,
-                                snippet=pt[:120],
-                            ),
-                        ),
+                        evidence_refs=evidence_refs,
                     )
                 )
         if not takeaways:
@@ -671,6 +703,8 @@ class StudyNoteSynthesizer:
                 video_id=video_meta.video_id,
                 start_seconds=source_segment.start_seconds,
                 end_seconds=source_segment.end_seconds,
+                start_timestamp_is_source=source_segment.start_timestamp_is_source,
+                end_timestamp_is_source=source_segment.end_timestamp_is_source,
                 source_type=EvidenceSourceType.TRANSCRIPT,
                 segment_id=source_segment.segment_id,
                 snippet=source_segment.text[:150],
@@ -798,6 +832,8 @@ class StudyNoteSynthesizer:
             title=title,
             start_seconds=win_start,
             end_seconds=win_end,
+            start_timestamp_is_source=segments[0].start_timestamp_is_source,
+            end_timestamp_is_source=segments[-1].end_timestamp_is_source,
             overview=overview,
             definitions=tuple(definitions),
             theorems=tuple(theorems),
@@ -911,6 +947,8 @@ class StudyNoteSynthesizer:
                 video_id=video_meta.video_id,
                 start_seconds=seg.start_seconds,
                 end_seconds=seg.end_seconds,
+                start_timestamp_is_source=seg.start_timestamp_is_source,
+                end_timestamp_is_source=seg.end_timestamp_is_source,
                 source_type=EvidenceSourceType.TRANSCRIPT,
                 segment_id=seg.segment_id,
                 snippet=seg.text,
@@ -988,6 +1026,8 @@ class StudyNoteSynthesizer:
                 video_id=video_meta.video_id,
                 start_seconds=mid_seg.start_seconds,
                 end_seconds=mid_seg.end_seconds,
+                start_timestamp_is_source=mid_seg.start_timestamp_is_source,
+                end_timestamp_is_source=mid_seg.end_timestamp_is_source,
                 source_type=EvidenceSourceType.TRANSCRIPT,
                 segment_id=mid_seg.segment_id,
                 snippet=mid_seg.text,
@@ -1007,6 +1047,8 @@ class StudyNoteSynthesizer:
             title=section_title,
             start_seconds=start_sec,
             end_seconds=end_sec,
+            start_timestamp_is_source=segments[0].start_timestamp_is_source,
+            end_timestamp_is_source=segments[-1].end_timestamp_is_source,
             overview=overview,
             definitions=tuple(definitions),
             theorems=tuple(theorems),

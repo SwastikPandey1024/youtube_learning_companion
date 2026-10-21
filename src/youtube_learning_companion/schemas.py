@@ -177,7 +177,7 @@ class YouTubePlaylistMetadata(BaseModel):
 
 
 class TranscriptSegment(BaseModel):
-    """Timestamp-aligned segment of spoken lecture text."""
+    """Transcript text with explicit provenance for each timing endpoint."""
 
     model_config = ConfigDict(frozen=True)
 
@@ -185,6 +185,12 @@ class TranscriptSegment(BaseModel):
     video_id: str = Field(..., description="Parent video ID")
     start_seconds: float = Field(..., ge=0.0, description="Start timestamp in seconds")
     end_seconds: float = Field(..., ge=0.0, description="End timestamp in seconds")
+    start_timestamp_is_source: bool = Field(
+        default=True, description="Whether start_seconds comes from the transcript source"
+    )
+    end_timestamp_is_source: bool = Field(
+        default=True, description="Whether end_seconds comes from the transcript source"
+    )
     text: str = Field(..., min_length=1, description="Spoken transcript text")
     confidence: float | None = Field(
         default=None, ge=0.0, le=1.0, description="Confidence score if available"
@@ -219,6 +225,12 @@ class TranscriptSegment(BaseModel):
           and the video URL is generated.
         - Provider: Defaults to 'companion'.
         """
+        if not (self.start_timestamp_is_source and self.end_timestamp_is_source):
+            raise ValueError(
+                "Cannot convert a segment with inferred timestamps to VIDEX because the "
+                "domain segment cannot preserve timestamp provenance."
+            )
+
         from uuid import NAMESPACE_URL, uuid5
 
         try:
@@ -328,6 +340,12 @@ class EvidenceReference(BaseModel):
     video_id: str = Field(..., description="Canonical video ID")
     start_seconds: float = Field(..., ge=0.0, description="Start presentation timestamp in seconds")
     end_seconds: float = Field(..., ge=0.0, description="End presentation timestamp in seconds")
+    start_timestamp_is_source: bool = Field(
+        default=True, description="Whether start_seconds comes from source evidence"
+    )
+    end_timestamp_is_source: bool = Field(
+        default=True, description="Whether end_seconds comes from source evidence"
+    )
     source_type: EvidenceSourceType = Field(
         default=EvidenceSourceType.TRANSCRIPT, description="Evidence source modality"
     )
@@ -339,14 +357,18 @@ class EvidenceReference(BaseModel):
     snippet: str = Field(default="", description="Relevant textual quote or OCR transcription")
 
     @property
-    def clickable_url(self) -> str:
-        """Clickable YouTube timestamp link."""
+    def clickable_url(self) -> str | None:
+        """Clickable YouTube timestamp link when its start time is source-backed."""
+        if not self.start_timestamp_is_source:
+            return None
         sec = int(self.start_seconds)
         return f"https://youtube.com/watch?v={self.video_id}&t={sec}s"
 
     @property
     def timestamp_label(self) -> str:
         """Formatted timestamp label like MM:SS or HH:MM:SS."""
+        if not self.start_timestamp_is_source:
+            return "inferred timing"
         total_sec = int(self.start_seconds)
         hrs = total_sec // 3600
         mins = (total_sec % 3600) // 60
@@ -511,6 +533,12 @@ class StudyNoteSection(BaseModel):
     title: str = Field(..., description="Section title")
     start_seconds: float = Field(..., ge=0.0, description="Section start timestamp")
     end_seconds: float = Field(..., ge=0.0, description="Section end timestamp")
+    start_timestamp_is_source: bool = Field(
+        default=True, description="Whether start_seconds comes from source transcript timing"
+    )
+    end_timestamp_is_source: bool = Field(
+        default=True, description="Whether end_seconds comes from source transcript timing"
+    )
     overview: str = Field(..., description="Section overview and narrative explanation")
     definitions: tuple[DefinitionItem, ...] = Field(
         default_factory=tuple, description="Definitions introduced in this section"
@@ -529,7 +557,9 @@ class StudyNoteSection(BaseModel):
     )
 
     @property
-    def clickable_url(self) -> str:
+    def clickable_url(self) -> str | None:
+        if not self.start_timestamp_is_source:
+            return None
         sec = int(self.start_seconds)
         return f"&t={sec}s"
 

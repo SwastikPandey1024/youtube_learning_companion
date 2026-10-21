@@ -6,7 +6,12 @@ import pytest
 
 from youtube_learning_companion.markdown import MarkdownExporter, format_seconds, sanitize_filename
 from youtube_learning_companion.schemas import (
+    DefinitionItem,
+    EvidenceReference,
+    NoteGenerationStatus,
     PlaylistProcessingManifest,
+    StudyNote,
+    StudyNoteSection,
     YouTubeVideoMetadata,
 )
 from youtube_learning_companion.synthesizer import StudyNoteSynthesizer
@@ -90,6 +95,48 @@ class TestMarkdownExporter:
 
         assert 'title: "A \\"quoted\\" title\\ncontinued"' in markdown
         assert markdown.startswith("---\n")
+
+    def test_inferred_timestamps_are_not_rendered_as_links(self):
+        note = StudyNote(
+            video_id="video_1",
+            video_title="Lecture",
+            source_url="https://youtube.com/watch?v=video_1",
+            executive_summary="Summary",
+            status=NoteGenerationStatus.PARTIAL_SUCCESS,
+            sections=(
+                StudyNoteSection(
+                    title="Concept",
+                    start_seconds=10.0,
+                    end_seconds=20.0,
+                    start_timestamp_is_source=False,
+                    end_timestamp_is_source=True,
+                    overview="An inferred start time.",
+                    definitions=(
+                        DefinitionItem(
+                            term="Concept",
+                            definition="A definition.",
+                            evidence_refs=(
+                                EvidenceReference(
+                                    video_id="video_1",
+                                    start_seconds=10.0,
+                                    end_seconds=20.0,
+                                    start_timestamp_is_source=False,
+                                    end_timestamp_is_source=True,
+                                    segment_id="segment-1",
+                                    snippet="A definition.",
+                                ),
+                            ),
+                        ),
+                    ),
+                ),
+            ),
+        )
+
+        markdown = MarkdownExporter().export_note_to_markdown(note)
+
+        assert "](None)" not in markdown
+        assert "](https://youtube.com/watch?v=video_1&t=10s)" not in markdown
+        assert "inferred timing" in markdown
 
     def test_playlist_and_topic_index_generation(self):
         meta = YouTubeVideoMetadata(

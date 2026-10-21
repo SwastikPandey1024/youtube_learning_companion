@@ -18,7 +18,9 @@ def main() -> int:
     parser = argparse.ArgumentParser(
         description="Audit a transcript file for completeness and quality."
     )
-    parser.add_argument("transcript_path", type=Path, help="Path to .json, .vtt, or .srt file")
+    parser.add_argument(
+        "transcript_path", type=Path, help="Path to .json, .vtt, .srt, or timestamped .txt file"
+    )
     parser.add_argument(
         "--duration", type=float, default=None, help="Video duration in seconds if known"
     )
@@ -49,6 +51,14 @@ def main() -> int:
     print(f"Acquisition Method:      {report.acquisition_method}")
     print(f"Language:                {report.language} (auto-gen: {report.is_auto_generated})")
     print(f"Segment Count:           {report.segment_count}")
+    print(
+        "Timestamp Provenance:    "
+        f"start {report.source_start_timestamp_count} source / "
+        f"{report.inferred_start_timestamp_count} inferred; "
+        f"end {report.source_end_timestamp_count} source / "
+        f"{report.inferred_end_timestamp_count} inferred"
+    )
+    print(f"Inferred-timing Segments:{report.inferred_timing_segment_count:>8}")
     print(f"Word Count:              {report.total_words}")
     print(f"First Timestamp:         {report.start_seconds:.1f}s")
     print(f"Last Timestamp:          {report.end_seconds:.1f}s")

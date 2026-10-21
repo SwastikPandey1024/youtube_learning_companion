@@ -61,7 +61,56 @@ class TestCompanionEvaluation:
 
         assert result.total_claims == 0
         assert result.unsupported_claim_rate == 0.0
-        assert result.is_acceptable
+        assert not result.is_acceptable
+
+    def test_foreign_video_evidence_is_not_accepted_as_grounding(self):
+        from youtube_learning_companion.schemas import (
+            DefinitionItem,
+            EvidenceReference,
+            NoteGenerationStatus,
+            StudyNote,
+            StudyNoteSection,
+        )
+
+        note = StudyNote(
+            video_id="expected_video",
+            video_title="Lecture",
+            source_url="https://youtube.com/watch?v=expected_video",
+            duration_seconds=120.0,
+            executive_summary="Summary",
+            status=NoteGenerationStatus.COMPLETE,
+            sections=(
+                StudyNoteSection(
+                    title="Concepts",
+                    start_seconds=0.0,
+                    end_seconds=120.0,
+                    overview="Overview",
+                    definitions=(
+                        DefinitionItem(
+                            term="Vector",
+                            definition="A quantity with magnitude and direction.",
+                            evidence_refs=(
+                                EvidenceReference(
+                                    video_id="foreign_video",
+                                    start_seconds=10.0,
+                                    end_seconds=20.0,
+                                    segment_id="foreign-segment",
+                                    snippet="A vector.",
+                                ),
+                            ),
+                        ),
+                    ),
+                ),
+            ),
+        )
+
+        result = evaluate_study_note(note)
+
+        assert result.grounded_claims == 0
+        assert result.unsupported_claims == 1
+        assert result.valid_timestamps == 0
+        assert not result.is_acceptable
+        assert any("different video" in item for item in result.notes)
 
     def test_formula_timestamp_out_of_bounds_detected(self):
         """Verify that out-of-bounds timestamps in formulas are strictly detected."""
@@ -259,4 +308,3 @@ class TestCompanionEvaluation:
         # After fix: coverage is 1.0 (both 'eigenvalue' and 'diagonalization' found)
         result = evaluate_study_note(note, reference_concepts=["eigenvalue", "diagonalization"])
         assert result.concept_coverage == 1.0
-

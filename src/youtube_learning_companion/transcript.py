@@ -198,6 +198,8 @@ class FileTranscriptProvider(BaseTranscriptProvider):
                     video_id=video_id,
                     start_seconds=start,
                     end_seconds=end,
+                    start_timestamp_is_source=item.get("start_timestamp_is_source", True),
+                    end_timestamp_is_source=item.get("end_timestamp_is_source", True),
                     text=text,
                     confidence=conf,
                     speaker=spk,
@@ -322,45 +324,39 @@ class FileTranscriptProvider(BaseTranscriptProvider):
                 )
 
     def _parse_txt(self, video_id: str, content: str, path: Path) -> TranscriptDocument | None:
-        """Parse line-by-line timestamped text (e.g. '[00:15] hello world')."""
+        """Parse lines with explicit start/end timestamps and transcript text."""
         lines = content.splitlines()
         segments: list[TranscriptSegment] = []
-        ts_re = re.compile(r"^\[?((?:\d{2}:)?\d{2}:\d{2})\]?\s*(.*)$")
+        cue_re = re.compile(r"^\[?([^\]\s]+)\s*-->\s*([^\]\s]+)\]?[ \t](.*)$")
 
-        current_start = 0.0
         for line in lines:
-            line_str = line.strip()
-            if not line_str:
+            if not line.strip():
                 continue
-            m = ts_re.match(line_str)
-            if m:
-                start_sec = parse_timestamp_seconds(m.group(1))
-                text = m.group(2).strip()
-                if text:
-                    segments.append(
-                        TranscriptSegment(
-                            segment_id=str(uuid4()),
-                            video_id=video_id,
-                            start_seconds=start_sec,
-                            end_seconds=start_sec + 5.0,
-                            text=text,
-                        )
-                    )
-            else:
-                segments.append(
-                    TranscriptSegment(
-                        segment_id=str(uuid4()),
-                        video_id=video_id,
-                        start_seconds=current_start,
-                        end_seconds=current_start + 10.0,
-                        text=line_str,
-                    )
+            match = cue_re.match(line)
+            if not match:
+                raise ValueError(
+                    "Each TXT line must use '[start --> end] transcript text' format"
                 )
-                current_start += 10.0
+
+            start_sec = parse_timestamp_seconds(match.group(1))
+            end_sec = parse_timestamp_seconds(match.group(2))
+            text = match.group(3)
+            if not text.strip():
+                raise ValueError("TXT transcript cue text cannot be empty")
+            segments.append(
+                TranscriptSegment(
+                    segment_id=str(uuid4()),
+                    video_id=video_id,
+                    start_seconds=start_sec,
+                    end_seconds=end_sec,
+                    text=text,
+                )
+            )
 
         if not segments:
             return None
 
+        self._validate_segment_order(segments)
         return TranscriptDocument(
             video_id=video_id,
             language="en",
